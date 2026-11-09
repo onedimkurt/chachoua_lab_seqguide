@@ -1,0 +1,7 @@
+# For developing/testing the Python code without Docker
+numpy
+matplotlib
+jinja2
+pytest
+streamlit>=1.36
+biopython

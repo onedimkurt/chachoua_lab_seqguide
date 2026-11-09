@@ -1,0 +1,12 @@
+[server]
+maxUploadSize = 2000
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+
+[client]
+toolbarMode = "minimal"

@@ -1,0 +1,23 @@
+# SeqGuide software environment (installed automatically inside the Docker image).
+# Versions are pinned so every lab laptop runs exactly the same tools.
+# All packages exist for linux-64 (Intel/AMD PCs) and linux-aarch64 (Apple silicon Macs).
+name: base
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  # app
+  - streamlit>=1.36
+  - numpy
+  - matplotlib
+  - jinja2
+  - biopython          # reads SnapGene .dna files
+  # bioinformatics tools
+  - fastp=1.4.0        # read trimming / QC
+  - seqkit=2.14.0      # read filtering & subsampling
+  - unicycler=0.5.1    # plasmid assembly from Illumina (and hybrid); pulls in SPAdes
+  - flye=2.9.6         # assembly from Nanopore reads
+  - minimap2=2.31      # aligning reads
+  - samtools=1.25      # alignment files, depth
+  - bcftools=1.25      # variant calling

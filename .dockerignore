@@ -1,0 +1,7 @@
+tests
+*.command
+*.bat
+.git
+validation
+__pycache__
+*.pyc

@@ -1,0 +1,12 @@
+services:
+  seqguide:
+    build: .
+    image: seqguide:0.1
+    ports:
+      - "127.0.0.1:8501:8501"   # only reachable from this computer
+    volumes:
+      - "${SEQGUIDE_HOME:?run SeqGuide with the start script}:/data"
+    environment:
+      - SEQGUIDE_HOST_DIR=${SEQGUIDE_HOME}
+      - TZ=${TZ:-UTC}             # the launchers pass the computer's time zone
+    restart: "no"
