@@ -21,6 +21,8 @@ files = {"app/streamlit_app.py": (ROOT / "app" / "streamlit_app.py").read_text()
 for p in sorted((ROOT / "seqguide").glob("*.py")):
     files[f"seqguide/{p.name}"] = p.read_text()
 
+files_js = json.dumps(files).replace("</", "<" + chr(92) + "/")   # keep "</script>" out of the page script
+
 html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -50,7 +52,7 @@ html = f"""<!DOCTYPE html>
 </div>
 <script type="module">
 import {{ mount }} from "https://cdn.jsdelivr.net/npm/@stlite/browser@{STLITE}/build/stlite.js";
-const files = {json.dumps(files).replace("</", "<\\/")};
+const files = {files_js};
 mount({{
   requirements: ["numpy", "matplotlib", "jinja2"],
   entrypoint: "app/streamlit_app.py",
