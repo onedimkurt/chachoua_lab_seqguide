@@ -377,6 +377,13 @@ def _collect_assembly(cfg: RunConfig, state: dict) -> None:
     state["contigs"] = contigs
 
 
+def _read_records_fastq(paths: list):
+    from .seqio import read_fastq
+    for p in paths:
+        for r in read_fastq(p):
+            yield r.seq, r.qual
+
+
 def _attach_depth(variants: list, depth: Optional[np.ndarray], comp: plasmid_align.Comparison, contig_len: int) -> None:
     if depth is None:
         return
@@ -416,22 +423,25 @@ def _compare_plasmid(cfg: RunConfig, state: dict) -> None:
     rc = None
     if not depth and cfg.short_reads:
         # No read alignment from external tools (e.g. "compare an existing assembly"): use the built-in read check
-        from .readcheck import check_reads
-        rc = check_reads(cfg.short_reads[0], ref.seq)
+        from .readcheck import check_reads, map_and_pileup
+        rc = map_and_pileup(_read_records_fastq(cfg.short_reads), ref.seq)          # depth along the map (plot)
+        rc_self = map_and_pileup(_read_records_fastq(cfg.short_reads), comp.rotated_seq)  # reads vs the sample itself
         for v in comp.variants:
-            if v.ref_pos < len(rc.depth):
-                v.depth = int(rc.depth[v.ref_pos])
-            if v.kind == "SNP" and v.depth:
-                n_alt = rc.alt_counts.get(v.ref_pos, {}).get(v.alt, 0)
-                good = max(1, v.depth - int(rc.lowq[v.ref_pos]))  # reads with a high-quality base here
-                v.flags.append(f"Confirmed by reads: {n_alt} of {good} high-quality reads ({n_alt / good:.0%}) carry it.")
-        known = {v.ref_pos for v in comp.variants}
-        extra = [x for x in rc.variants() if x["pos"] - 1 not in known]
+            q = min(max(v.qry_pos, 0), len(rc_self.depth) - 1)
+            v.depth = int(rc_self.depth[q])
+            if v.kind in ("SNP", "MNP", "INS", "DEL") and v.depth:
+                good = max(1, v.depth - int(rc_self.lowq[q]))
+                disagree = sum(rc_self.alt_counts.get(q, {}).values())
+                agree = max(0, good - disagree)
+                v.flags.append(f"Confirmed by reads: {agree} of {good} high-quality reads ({agree / good:.0%}) "
+                               "support the sample's version here.")
+        # mixed population: positions where reads disagree with the sample's OWN assembly
+        extra = rc_self.variants()
         state["read_check"] = {"reads": rc.n_reads, "pct_mapped": rc.pct_mapped, "extra_read_variants": extra}
         if extra:
             state.setdefault("warnings", []).append(
-                f"{len(extra)} position(s) where 5% or more of reads differ from the reference but the assembly does not, "
-                "e.g. " + ", ".join(f"{x['pos']} ({x['af']:.0%} {x['alt']})" for x in extra[:5]) +
+                f"{len(extra)} position(s) where 5% or more of reads disagree with the assembled plasmid, "
+                "e.g. assembly position " + ", ".join(f"{x['pos']} ({x['af']:.0%} {x['alt']})" for x in extra[:5]) +
                 ". This can mean a mixed population (two clones) or a sequencing artefact.")
     for v in comp.variants:
         if v.depth is not None and v.depth < min_d:

@@ -91,18 +91,34 @@ def map_and_pileup(records, ref: str, k: int = 19, max_mm_frac: float = 0.05, mi
                             continue
                         alen = len(target)          # read runs past the end of a linear target
                     mm = [i for i in range(alen) if s[i] != target[i]]
-                    if len(mm) > allowed:
-                        j = next((j for j in range(len(mm)) if (len(mm) - j) / (rl - mm[j]) > 0.2), None)
-                        if j is None or j > allowed or mm[j] < 40:
-                            continue
+                    lead = 0
+                    # 5' end that does not match (read starts inside an insertion / junction): clip it
+                    for j in range(len(mm) - 1, 0, -1):
+                        if (j + 1) / (mm[j] + 1) > 0.2:
+                            lead = mm[j] + 1
+                            break
+                    if lead:
+                        mm = [m for m in mm if m >= lead]
+                    # 3' end that does not match (adapter, junction, insertion): clip it
+                    clip_pos = None
+                    j = next((j for j in range(len(mm) - 1) if (len(mm) - j) / (alen - mm[j]) > 0.2), None)
+                    if j is not None:
+                        clip_pos = (start + mm[j]) % L
                         mm, alen = mm[:j], mm[j]
-                        clipped_at = (start + alen) % L
-                        clips[clipped_at] = clips.get(clipped_at, 0) + 1
-                    cands.append((alen, -len(mm), rng.random(), start, s, q, mm))
+                    if alen - lead < 40 or len(mm) > allowed:
+                        continue
+                    if lead:
+                        mm = [m - lead for m in mm]
+                        s2, q2 = s[lead:alen], (q[lead:alen] if q else None)
+                        cands.append((alen - lead, -len(mm), rng.random(), (start + lead) % L, s2, q2, mm, clip_pos))
+                        continue
+                    cands.append((alen, -len(mm), rng.random(), start, s, q, mm, clip_pos))
         if not cands:
             continue
         best = max(cands)
         alen, start, s, q, mm = best[0], best[3], best[4], best[5], best[6]
+        if best[7] is not None:
+            clips[best[7]] = clips.get(best[7], 0) + 1
         mapped += 1
         end = start + alen
         if end <= L:

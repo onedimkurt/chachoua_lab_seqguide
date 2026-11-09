@@ -39,6 +39,17 @@ ss = st.session_state
 ss.setdefault("step", 0)
 
 
+def download(col, label: str, data: bytes, file_name: str, mime: str = "application/octet-stream") -> None:
+    """Download button; in the browser version a plain link (stlite's download button cannot serve files)."""
+    if BROWSER:
+        b64 = base64.b64encode(data).decode()
+        col.markdown(f'<a download="{file_name}" href="data:{mime};base64,{b64}" '
+                     'style="display:inline-block;padding:6px 14px;border:1px solid #ccc;border-radius:8px;'
+                     f'text-decoration:none;color:inherit">⬇ {label}</a>', unsafe_allow_html=True)
+    else:
+        col.download_button(f"⬇ {label}", data, file_name=file_name, mime=mime)
+
+
 def compact(n: int) -> str:
     return f"{n / 1e6:.2f} M" if n >= 1e6 else (f"{n / 1e3:.1f} k" if n >= 1e4 else f"{n:,}")
 
@@ -114,13 +125,13 @@ with st.empty().container():
 
         if st.button("🎓 Load practice data (a demo plasmid with 3 hidden mutations)"):
             from seqguide import demo
-            with st.spinner("Creating practice files…"):
+            with st.spinner("Creating practice files… (about 30 seconds)"):
                 demo.make_demo(INPUT / "demo")
-            st.success("Practice files added to input/demo. Tick the two pDemo_illumina files and pDemo_expected_map.gb.")
+            st.success("Practice files added. Tick the two pDemo_illumina files and pDemo_expected_map.gb below.")
 
         files = sorted(p for p in INPUT.rglob("*") if p.is_file() and p.name.lower().endswith(EXTS))
         if not files:
-            st.info("No sequencing files found yet in the input folder.")
+            st.info("No files added yet." if BROWSER else "No sequencing files found yet in the input folder.")
         else:
             st.subheader("Files found")
             st.caption("Tick the reads of ONE sample (e.g. both R1 and R2) plus its reference map, if you have one.")
@@ -232,7 +243,8 @@ with st.empty().container():
             others = sorted(p for p in INPUT.rglob("*") if p.is_file() and p.suffix.lower() in (".gb", ".gbk", ".genbank", ".dna", ".fasta", ".fa", ".fna"))
             options = list(dict.fromkeys(candidates + others))
             if not options:
-                st.error("No reference file found. Put your .gb / .dna / .fasta file in the input folder (step 1).")
+                st.error("No reference file found. Add your .gb / .dna / .fasta file in step 1." if BROWSER else
+                         "No reference file found. Put your .gb / .dna / .fasta file in the input folder (step 1).")
             else:
                 ref_path = st.selectbox("Reference file", options, format_func=lambda p: p.name)
                 try:
@@ -258,7 +270,7 @@ with st.empty().container():
                 if fastas:
                     have_asm = st.selectbox("Assembly file", fastas, format_func=lambda p: str(p.relative_to(INPUT)))
                 else:
-                    st.warning("No FASTA file found in the input folder.")
+                    st.warning("No FASTA file found. Add your assembly in step 1.")
         if stype == "amplicon":
             ploidy = st.radio("**Where does the DNA come from?**", [2, 1],
                               format_func={2: "Genomic DNA of a diploid organism (human, mouse, plant…) — can be heterozygous",
@@ -367,13 +379,13 @@ with st.empty().container():
         report = outdir / "report.html"
         c = st.columns(3)
         if report.exists():
-            c[0].download_button("⬇ Download report (HTML)", report.read_bytes(), file_name=f"{cfg.sample}_report.html",
+            download(c[0], "Download report (HTML)", report.read_bytes(), f"{cfg.sample}_report.html",
                                  mime="text/html")
         for name, col in (("differences.csv", c[1]), ("variants_explained.csv", c[1]),
                           ("assembly_matched_to_reference.fasta", c[2])):
             p = outdir / name
             if p.exists():
-                col.download_button(f"⬇ {name}", p.read_bytes(), file_name=f"{cfg.sample}_{name}")
+                download(col, name, p.read_bytes(), f"{cfg.sample}_{name}", "text/plain")
         if report.exists():
             embed_html(report.read_text(encoding="utf-8"), height=1400, scrolling=True)
         if st.button("Analyse another sample"):
