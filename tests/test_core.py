@@ -211,3 +211,14 @@ def test_plasmid_figure_draws_depth_panel(plasmid):
     finally:
         plots._depth_axis = orig
     assert called.get("yes")
+
+
+def test_web_build_is_safe(tmp_path):
+    import json, re, subprocess
+    root = Path(__file__).resolve().parents[1]
+    subprocess.run([sys.executable, str(root / "web" / "build.py")], check=True, capture_output=True)
+    h = (root / "site" / "index.html").read_text()
+    body = h.split('<script type="module">', 1)[1]
+    assert body.count("</script>") == 1                      # only the real closing tag
+    files = json.loads(re.search(r"const files = (\{.*?\});\nmount", body, re.S).group(1))
+    assert files["app/streamlit_app.py"] == (root / "app" / "streamlit_app.py").read_text()

@@ -50,7 +50,7 @@ html = f"""<!DOCTYPE html>
 </div>
 <script type="module">
 import {{ mount }} from "https://cdn.jsdelivr.net/npm/@stlite/browser@{STLITE}/build/stlite.js";
-const files = {json.dumps(files)};
+const files = {json.dumps(files).replace("</", "<\\/")};
 mount({{
   requirements: ["numpy", "matplotlib", "jinja2"],
   entrypoint: "app/streamlit_app.py",
@@ -65,6 +65,9 @@ mount({{
 </body>
 </html>
 """
+
+script = html.split('<script type="module">', 1)[1].rsplit("</script>", 1)[0]
+assert "</script" not in script.lower(), "embedded Python files would close the page's <script> tag"
 
 out = ROOT / "site"
 out.mkdir(exist_ok=True)
