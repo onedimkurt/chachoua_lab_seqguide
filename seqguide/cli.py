@@ -4,7 +4,7 @@
   python -m seqguide batch samples.tsv [--out DIR] [--threads N]
 
 samples.tsv (tab-separated, header required):
-  sample  sample_type  reference  reads  [assembly]  [workflow]  [expected_size]
+  sample  sample_type  reference  reads  [assembly]  [workflow]  [expected_size]  [engine]
   - sample_type: plasmid | amplicon
   - reads: one or more FASTQ paths separated by ';' (R1;R2, or a Nanopore file, or both)
   - workflow (optional): force plasmid_denovo | plasmid_align | amplicon_align | compare_assembly
@@ -83,6 +83,8 @@ def cmd_batch(args) -> int:
             workflow = "compare_assembly"
         if row.get("workflow", "").strip():
             workflow = row["workflow"].strip()
+        if row.get("engine", "").strip():
+            params["engine"] = row["engine"].strip()      # "builtin" forces SeqGuide's own engine
         if workflow == "plasmid_align":
             params["ploidy"] = 1
             params.setdefault("preset", "sr" if short else "map-ont")
@@ -91,7 +93,8 @@ def cmd_batch(args) -> int:
                                   inspection=insp, recommendation=rec_d,
                                   answers={"sample_type": stype, "reference": _ref_kind(ref) if ref else "none"})
         res = workflows.run(cfg, log=lambda m: print("  " + m, flush=True))
-        s = {"sample": name, "workflow": workflow, "status": "error" if res.get("error") else "ok",
+        s = {"sample": name, "workflow": workflow, "engine": res["params"].get("engine"),
+             "status": "error" if res.get("error") else "ok",
              "error": res.get("error") or "", "minutes": round((time.time() - t0) / 60, 1)}
         if res.get("comparison"):
             c = res["comparison"]
