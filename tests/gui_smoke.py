@@ -44,7 +44,7 @@ v1.html = lambda *a, **k: print('   embedded report:', len(a[0]), 'chars')
 sys.modules.update({'streamlit': st, 'streamlit.components': comp, 'streamlit.components.v1': v1})
 
 APP = str(Path(__file__).resolve().parents[1] / 'app' / 'streamlit_app.py')
-for _ in range(40):
+for _ in range(80):
     step = st.session_state.get('step', 0)
     print('step', step)
     try:
@@ -63,7 +63,7 @@ import importlib
 st.session_state.clear()
 os.environ['PATH'] = '/usr/bin:/bin'
 real_platform = sys.platform
-for _ in range(40):
+for _ in range(80):
     step = st.session_state.get('step', 0)
     sys.platform = 'emscripten'
     try:

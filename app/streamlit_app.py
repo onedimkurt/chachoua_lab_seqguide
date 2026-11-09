@@ -354,12 +354,19 @@ with st.empty().container():
             mark = "✅" if i < job.index else ("⏳" if i == job.index else "⬜")
             st.markdown(f"{mark} **{stp.name}**")
             if i == job.index:
-                st.info(stp.explanation)
+                st.info(stp.explanation + ("  \n⏳ Working… this step can take a minute or two in the browser."
+                                           if BROWSER else ""))
         if ss.job_log:
             st.code("\n".join(ss.job_log[-10:]))
         if not job.done:
+            # Two refreshes per step: the first only draws this progress page, the second runs the step.
+            # (In the browser version the page can only redraw between script runs.)
+            if ss.get("job_phase") != "run":
+                ss.job_phase = "run"
+                st.rerun()
+            ss.job_phase = "show"
             job.set_log(lambda m: ss.job_log.append(m))
-            job.step()          # one step per screen refresh, so progress stays visible
+            job.step()
             st.rerun()
         ss.results = job.finish()
         ss.pop("job", None)

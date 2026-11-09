@@ -16,7 +16,7 @@ cd "$APP"
   docker version --format 'Docker client {{.Client.Version}}, server {{.Server.Version}} ({{.Server.Arch}})' || { echo "DOCKER NOT RUNNING"; exit 1; }
   echo "--- copy data to $SEQGUIDE_HOME ---"
   mkdir -p "$SEQGUIDE_HOME/input" "$SEQGUIDE_HOME/runs"
-  cp -n "$HERE"/input/* "$SEQGUIDE_HOME/input/"
+  cp "$HERE"/input/* "$SEQGUIDE_HOME/input/"
   cp "$HERE/samples.tsv" "$SEQGUIDE_HOME/samples.tsv"
   echo "--- build ---"
   time docker compose build
