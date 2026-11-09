@@ -5,4 +5,4 @@ tools installed. External tools (fastp, Unicycler, Flye, minimap2, samtools,
 bcftools) are only called from `workflows.py`.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

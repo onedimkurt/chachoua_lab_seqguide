@@ -22,7 +22,7 @@ class SS(dict):
 
 st = types.ModuleType('streamlit'); st.session_state = SS()
 def anyfn(*a, **k): return MagicMock()
-for n in 'set_page_config title caption write divider header subheader markdown info success warning error metric image code progress empty spinner expander download_button html slider'.split():
+for n in 'set_page_config title caption write divider header subheader markdown info success warning error metric image code progress empty spinner expander download_button html slider container'.split():
     setattr(st, n, anyfn)
 st.expander = lambda *a, **k: MagicMock()
 st.spinner = lambda *a, **k: MagicMock()

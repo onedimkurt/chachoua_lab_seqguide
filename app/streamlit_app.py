@@ -39,13 +39,29 @@ ss = st.session_state
 ss.setdefault("step", 0)
 
 
+_DL_HTML = """
+<button id="b" style="font:14px -apple-system,Segoe UI,Roboto,sans-serif;padding:7px 14px;border:1px solid #ccc;
+ border-radius:8px;background:#fff;cursor:pointer">⬇ __LABEL__</button>
+<script>
+const bytes = Uint8Array.from(atob("__B64__"), c => c.charCodeAt(0));
+const url = URL.createObjectURL(new Blob([bytes], {type: "__MIME__"}));
+document.getElementById("b").onclick = () => {
+  // create the link in the main page so the download is not blocked by the frame
+  let d = document; try { if (window.parent && window.parent.document) d = window.parent.document; } catch (e) {}
+  const a = d.createElement("a"); a.href = url; a.download = "__NAME__";
+  d.body.appendChild(a); a.click(); a.remove();
+};
+</script>"""
+
+
 def download(col, label: str, data: bytes, file_name: str, mime: str = "application/octet-stream") -> None:
-    """Download button; in the browser version a plain link (stlite's download button cannot serve files)."""
+    """Download button. In the browser version stlite's st.download_button cannot serve files, so a small
+    button builds the file in memory (works for large files, unlike plain data: links)."""
     if BROWSER:
-        b64 = base64.b64encode(data).decode()
-        col.markdown(f'<a download="{file_name}" href="data:{mime};base64,{b64}" '
-                     'style="display:inline-block;padding:6px 14px;border:1px solid #ccc;border-radius:8px;'
-                     f'text-decoration:none;color:inherit">⬇ {label}</a>', unsafe_allow_html=True)
+        html = (_DL_HTML.replace("__B64__", base64.b64encode(data).decode()).replace("__LABEL__", label)
+                .replace("__MIME__", mime).replace("__NAME__", file_name.replace('"', "")))
+        with col:
+            embed_html(html, height=48)
     else:
         col.download_button(f"⬇ {label}", data, file_name=file_name, mime=mime)
 
@@ -384,15 +400,25 @@ with st.empty().container():
             rel = outdir.relative_to(DATA_DIR) if outdir.is_relative_to(DATA_DIR) else outdir
             st.caption(f"All files are saved in **{HOST_DIR}/{rel}**")
         report = outdir / "report.html"
-        c = st.columns(3)
-        if report.exists():
-            download(c[0], "Download report (HTML)", report.read_bytes(), f"{cfg.sample}_report.html",
-                                 mime="text/html")
-        for name, col in (("differences.csv", c[1]), ("variants_explained.csv", c[1]),
-                          ("assembly_matched_to_reference.fasta", c[2])):
-            p = outdir / name
-            if p.exists():
-                download(col, name, p.read_bytes(), f"{cfg.sample}_{name}", "text/plain")
+        from seqguide import export
+        zip_bytes = export.zip_results(outdir, cfg.sample)
+        st.markdown("#### Download")
+        download(st.container(), "Download everything (ZIP folder)", zip_bytes, f"{cfg.sample}_SeqGuide_results.zip", "application/zip")
+        st.caption("One ZIP with the report, tables, your plasmid as an annotated GenBank file (SnapGene/Benchling), "
+                   "and a **genome_browser** folder ready for IGV (FASTA + .fai, reads as BAM + .bai, session file). "
+                   "Unzip it and see HOW_TO_OPEN.txt inside.")
+        with st.expander("Download single files"):
+            c = st.columns(3)
+            if report.exists():
+                download(c[0], "Report (HTML)", report.read_bytes(), f"{cfg.sample}_report.html", mime="text/html")
+            for name, col in (("differences.csv", c[1]), ("variants_explained.csv", c[1]),
+                              ("assembly_matched_to_reference.fasta", c[2])):
+                p = outdir / name
+                if p.exists():
+                    download(col, name, p.read_bytes(), f"{cfg.sample}_{name}", "text/plain")
+            gbs = sorted((outdir / "genome_browser").glob("*.gb"))
+            for gbp in gbs:
+                download(c[2], gbp.name + " (SnapGene)", gbp.read_bytes(), gbp.name, "text/plain")
         if report.exists():
             embed_html(report.read_text(encoding="utf-8"), height=1400, scrolling=True)
         if st.button("Analyse another sample"):

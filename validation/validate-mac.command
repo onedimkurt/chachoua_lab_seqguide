@@ -18,6 +18,7 @@ cd "$APP"
   mkdir -p "$SEQGUIDE_HOME/input" "$SEQGUIDE_HOME/runs"
   cp "$HERE"/input/* "$SEQGUIDE_HOME/input/"
   cp "$HERE/samples.tsv" "$SEQGUIDE_HOME/samples.tsv"
+  cp "$HERE/check_exports.sh" "$SEQGUIDE_HOME/check_exports.sh"
   echo "--- build ---"
   time docker compose build
   echo "--- tool check ---"
@@ -25,6 +26,8 @@ cd "$APP"
   echo "--- batch ---"
   rm -rf "$SEQGUIDE_HOME/runs/validation"
   time docker compose run --rm seqguide python -m seqguide batch /data/samples.tsv --out /data/runs/validation
+  echo "--- check genome-browser files with samtools ---"
+  docker compose run --rm seqguide bash /data/check_exports.sh
   echo "--- copy results back ---"
   rm -rf "$HERE/results"; cp -R "$SEQGUIDE_HOME/runs/validation" "$HERE/results"
   echo "--- start GUI ---"

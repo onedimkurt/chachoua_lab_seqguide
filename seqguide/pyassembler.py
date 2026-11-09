@@ -347,7 +347,8 @@ def assemble(reads: Iterable, expected_size: Optional[int] = None, target_depth:
     """reads: iterable of (seq, qual) tuples (qual may be None)."""
     cleaned = []
     total = 0
-    for seq, qual in reads:
+    for item in reads:
+        seq, qual = item[0], item[1]
         s = clean_read(seq, qual)
         if s:
             cleaned.append(s)
@@ -453,7 +454,7 @@ def assemble_long(reads: Iterable, expected_size: Optional[int] = None, max_read
     from .inspect import estimate_circular_size
     import numpy as np
 
-    rs = [(s.upper(), q) for s, q in reads if len(s) >= 1000]
+    rs = [(it[0].upper(), it[1]) for it in reads if len(it[0]) >= 1000]
     if not rs:
         return AssemblyResult(None, False, None, [], ["No reads of at least 1,000 bp."], [], {})
     size, _ = estimate_circular_size(np.array([len(s) for s, _ in rs]))

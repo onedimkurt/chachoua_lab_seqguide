@@ -11,7 +11,10 @@ SeqGuide walks the user through five steps in the browser. At every step it expl
 2. **Understand data:** file type, Illumina vs Nanopore, paired-end check (do R1/R2 really belong together?), read count, length, quality, plasmid size from read lengths, dimers.
 3. **Decide:** a few plain questions (what did you sequence, what is your goal, do you have a reference). The app then recommends an analysis with reasons and warnings (e.g. depth too low, size mismatch). It also shows the alternatives and their trade-offs.
 4. **Run:** shows a progress bar and explains each step while it runs.
-5. **Results:** a self-contained HTML report with a bottom-line verdict, a plasmid map showing the differences, read depth, a table of differences with protein-level effects, a glossary, and the exact tool versions and commands for your methods section.
+5. **Results:** one **"Download everything" ZIP**. It holds the report, tables, your plasmid as an **annotated
+   GenBank file** (opens in SnapGene/Benchling: the map's features carried over to your sample's sequence, every
+   difference marked) and a **`genome_browser` folder for IGV** (FASTA + .fai, reads as BAM + .bai, feature and
+   difference tracks, and `igv_session.xml` that opens everything at once). Also inside: a self-contained HTML report with a bottom-line verdict, a plasmid map showing the differences, read depth, a table of differences with protein-level effects, a glossary, and the exact tool versions and commands for your methods section.
 
 There are two ways to run it:
 

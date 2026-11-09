@@ -47,9 +47,12 @@ def _iter_fastq(path):
 
 
 def map_and_pileup(records, ref: str, k: int = 19, max_mm_frac: float = 0.05, min_bq: int = 20,
-                   max_reads: int | None = None, circular: bool = True) -> ReadCheck:
-    """records: iterable of (sequence, quality-or-None). Quality None = every base trusted.
-    circular=False for linear targets (amplicons): reads must fit inside the target."""
+                   max_reads: int | None = None, circular: bool = True,
+                   alignments: list | None = None) -> ReadCheck:
+    """records: iterable of (sequence, quality-or-None[, name]). Quality None = every base trusted.
+    circular=False for linear targets (amplicons): reads must fit inside the target.
+    alignments: if a list is given, one tuple per placed read is appended:
+        (pos0, reverse, read_seq_as_aligned, qual_or_None, left_clip, aligned_len, mapq, name)"""
     ref = ref.upper()
     L = len(ref)
     ext = ref + ref[:400] if circular else ref  # circular: reads may run across the origin
@@ -63,10 +66,12 @@ def map_and_pileup(records, ref: str, k: int = 19, max_mm_frac: float = 0.05, mi
     clips: dict = {}
     lowq = np.zeros(L, dtype=np.int64)
     n = mapped = 0
-    for seq, qual in records:
+    for item in records:
+        seq, qual = item[0], item[1]
         if max_reads and n >= max_reads:
             break
         n += 1
+        name = item[2] if len(item) > 2 else f"read{n}"
         seq = seq.upper()
         rl = len(seq)
         if rl < k + 5:
@@ -110,13 +115,18 @@ def map_and_pileup(records, ref: str, k: int = 19, max_mm_frac: float = 0.05, mi
                     if lead:
                         mm = [m - lead for m in mm]
                         s2, q2 = s[lead:alen], (q[lead:alen] if q else None)
-                        cands.append((alen - lead, -len(mm), rng.random(), (start + lead) % L, s2, q2, mm, clip_pos))
+                        cands.append((alen - lead, -len(mm), rng.random(), (start + lead) % L, s2, q2, mm, clip_pos,
+                                      strand, s, q, lead))
                         continue
-                    cands.append((alen, -len(mm), rng.random(), start, s, q, mm, clip_pos))
+                    cands.append((alen, -len(mm), rng.random(), start, s, q, mm, clip_pos, strand, s, q, 0))
         if not cands:
             continue
-        best = max(cands)
+        cands.sort(reverse=True)
+        best = cands[0]
         alen, start, s, q, mm = best[0], best[3], best[4], best[5], best[6]
+        if alignments is not None:
+            tie = len(cands) > 1 and cands[1][0] == best[0] and cands[1][1] == best[1] and cands[1][3] != best[3]
+            alignments.append((start, best[8] == -1, best[9], best[10], best[11], alen, 0 if tie else 60, name))
         if best[7] is not None:
             clips[best[7]] = clips.get(best[7], 0) + 1
         mapped += 1

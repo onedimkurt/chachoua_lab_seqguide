@@ -284,6 +284,13 @@ def plasmid_denovo_steps(cfg: RunConfig, state: dict) -> list:
     else:
         steps.append(Step("Summarise assembly", "Summarises the assembly (no reference given, so no comparison).",
                           func=lambda: _assembly_only(cfg, state)))
+    steps.append(Step("Map reads for the genome browser",
+                      "Places the reads on your sample's final sequence (numbered like your map), for viewing in IGV.",
+                      [["minimap2", "-ax", preset, "-t", t, "gb_target.fasta", *reads],
+                       ["samtools", "sort", "-o", "gb_reads.bam", "-"]], tools=["minimap2", "samtools"]))
+    steps.append(Step("Index genome-browser reads", "Creates the .bai index IGV needs to show the reads.",
+                      [["samtools", "index", "gb_reads.bam"]], tools=["samtools"]))
+    steps.append(_bundle_step(cfg, state))
     return steps
 
 
@@ -325,6 +332,7 @@ def align_steps(cfg: RunConfig, state: dict) -> list:
                       stdout_to="variants.vcf", tools=["bcftools"]))
     steps.append(Step("Interpret variants", "Explains each variant: where it is, which feature it hits, and how well it is supported.",
                       func=lambda: _interpret_alignment(cfg, state)))
+    steps.append(_bundle_step(cfg, state))
     return steps
 
 
@@ -341,6 +349,7 @@ def compare_assembly_steps(cfg: RunConfig, state: dict) -> list:
     else:
         steps.append(Step("Compare to reference", "Lines up the assembled plasmid with your expected map, lists every difference, "
                                                   "and explains which feature it hits.", func=lambda: _compare_plasmid(cfg, state)))
+    steps.append(_bundle_step(cfg, state))
     return steps
 
 
@@ -355,6 +364,42 @@ def build_steps(cfg: RunConfig, state: dict) -> list:
 
 
 # ====================================================================== python steps
+
+def _seq_id(name: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in "_-." else "_" for ch in name)[:40] or "sample"
+
+
+def _set_gb_target(cfg: RunConfig, state: dict, entries: list) -> None:
+    """Remember what the genome-browser files should show, and write it for the read mapper (Docker version)."""
+    state["gb_entries"] = entries
+    write_fasta([(e["name"], e["seq"]) for e in entries], _wd(cfg) / "gb_target.fasta")
+
+
+def _bundle_step(cfg: RunConfig, state: dict) -> Step:
+    return Step("Prepare files for IGV and SnapGene",
+                "Writes your sample's sequence as an annotated GenBank file (map features carried over, every difference "
+                "marked), plus FASTA + .fai, annotation tracks, reads as BAM + .bai and an IGV session that opens them all.",
+                func=lambda: _make_bundle(cfg, state))
+
+
+def _make_bundle(cfg: RunConfig, state: dict) -> None:
+    from . import export
+    entries = state.get("gb_entries")
+    if not entries:
+        return
+    wd = _wd(cfg)
+    bam = None
+    for cand in ("gb_reads.bam", "aligned.bam"):
+        if (wd / cand).exists() and (wd / (cand + ".bai")).exists():
+            bam = wd / cand
+            break
+    note = ""
+    if not bam and not state.get("gb_placed") and cfg.long_reads and not cfg.short_reads:
+        note = ("Nanopore reads are not included as a BAM in the browser version (they need a gapped aligner). "
+                "The Docker version adds them.")
+    export.make_bundle(wd / "genome_browser", cfg.sample, entries,
+                       placed=None if bam else state.get("gb_placed"), bam_from=bam, note=note)
+
 
 def _wd(cfg: RunConfig) -> Path:
     return Path(cfg.outdir)
@@ -381,7 +426,7 @@ def _read_records_fastq(paths: list):
     from .seqio import read_fastq
     for p in paths:
         for r in read_fastq(p):
-            yield r.seq, r.qual
+            yield r.seq, r.qual, r.id
 
 
 def _attach_depth(variants: list, depth: Optional[np.ndarray], comp: plasmid_align.Comparison, contig_len: int) -> None:
@@ -425,7 +470,10 @@ def _compare_plasmid(cfg: RunConfig, state: dict) -> None:
         # No read alignment from external tools (e.g. "compare an existing assembly"): use the built-in read check
         from .readcheck import check_reads, map_and_pileup
         rc = map_and_pileup(_read_records_fastq(cfg.short_reads), ref.seq)          # depth along the map (plot)
-        rc_self = map_and_pileup(_read_records_fastq(cfg.short_reads), comp.rotated_seq)  # reads vs the sample itself
+        placed: list = []
+        rc_self = map_and_pileup(_read_records_fastq(cfg.short_reads), comp.rotated_seq,
+                                 alignments=placed)                                  # reads vs the sample itself
+        state["gb_placed"] = {_seq_id(cfg.sample): placed}
         for v in comp.variants:
             q = min(max(v.qry_pos, 0), len(rc_self.depth) - 1)
             v.depth = int(rc_self.depth[q])
@@ -446,6 +494,10 @@ def _compare_plasmid(cfg: RunConfig, state: dict) -> None:
     for v in comp.variants:
         if v.depth is not None and v.depth < min_d:
             v.flags.append(f"Only {v.depth} reads cover this position; treat it as uncertain.")
+    from .export import transfer_features
+    _set_gb_target(cfg, state, [{"name": _seq_id(cfg.sample), "seq": comp.rotated_seq, "circular": True,
+                                 "features": transfer_features(ref.features, comp.variants, len(comp.rotated_seq)),
+                                 "variants": comp.variants}])
     # rotated assembly is directly comparable with the reference map
     write_fasta([(f"{cfg.sample}_assembly_rotated_to_{ref.name}", comp.rotated_seq)], wd / "assembly_matched_to_reference.fasta")
     _write_variants_csv(comp.variants, wd / "differences.csv")
@@ -491,6 +543,8 @@ def _assembly_only(cfg: RunConfig, state: dict) -> None:
     state["main_contig"] = main["name"]
     state["coverage"] = {main["name"]: depth_summary(depth.get(main["name"]), 30)}
     state["plot_inputs"] = {"kind": "assembly", "depth": depth.get(main["name"]), "name": main["name"]}
+    _set_gb_target(cfg, state, [{"name": _seq_id(cfg.sample), "seq": main["seq"], "circular": bool(main.get("circular")),
+                                 "features": [], "variants": []}])
 
 
 def _prepare_reference(cfg: RunConfig, state: dict) -> None:
@@ -544,6 +598,10 @@ def _interpret_alignment(cfg: RunConfig, state: dict) -> None:
     _write_variants_csv(all_vars, wd / "variants_explained.csv", with_target=[t["name"] for t in targets for _ in t["variants"]])
     state["amplicon"] = {"targets": targets, "mapping": parse_flagstat(wd / "flagstat.txt"), "min_depth": min_d,
                          "ploidy": ploidy}
+    _set_gb_target(cfg, state, [{"name": name, "seq": ref.seq, "features": ref.features,
+                                 "variants": [v for v, _ in by_target[name]],
+                                 "circular": ref.circular or cfg.workflow == "plasmid_align"}
+                                for name, ref in refs.items()])
     state["plot_inputs"] = {"kind": "targets", "depth": depth, "refs": state["refs"], "min_depth": min_d,
                             "variants": {t["name"]: [v for v, _ in by_target[t["name"]]] for t in targets}}
     n_high = sum(1 for v in all_vars if v.severity == "high")
@@ -590,7 +648,7 @@ def _read_records(paths: list):
     from .seqio import read_fastq
     for p in paths:
         for r in read_fastq(p):
-            yield r.seq, r.qual
+            yield r.seq, r.qual, r.id
 
 
 def builtin_steps(cfg: RunConfig, state: dict) -> list:
@@ -613,12 +671,14 @@ def builtin_steps(cfg: RunConfig, state: dict) -> list:
             steps.append(Step("Check the assembly against the reads",
                               "Places the reads on the finished assembly to confirm that every position is supported.",
                               func=lambda: _builtin_assembly_only(cfg, state)))
+        steps.append(_bundle_step(cfg, state))
         return steps
     return [Step("Prepare reference", "Reads your target sequence(s).", func=lambda: _prepare_reference(cfg, state)),
             Step("Align reads and find variants (built-in)",
                  "Places every read on your target sequence(s), measures depth at every position and finds positions "
                  "where your sample differs, with the share of reads that show each change.",
-                 func=lambda: _builtin_align(cfg, state))]
+                 func=lambda: _builtin_align(cfg, state)),
+            _bundle_step(cfg, state)]
 
 
 def _builtin_assemble(cfg: RunConfig, state: dict) -> None:
@@ -643,9 +703,14 @@ def _builtin_assemble(cfg: RunConfig, state: dict) -> None:
 def _builtin_assembly_only(cfg: RunConfig, state: dict) -> None:
     main = state["contigs"][0]
     state["main_contig"] = main["name"]
+    _set_gb_target(cfg, state, [{"name": _seq_id(cfg.sample), "seq": main["seq"], "circular": bool(main.get("circular")),
+                                 "features": [], "variants": []}])
     if cfg.short_reads:
         from .readcheck import map_and_pileup
-        rc = map_and_pileup(_read_records(cfg.short_reads), main["seq"], circular=bool(main["circular"]))
+        placed: list = []
+        rc = map_and_pileup(_read_records(cfg.short_reads), main["seq"], circular=bool(main["circular"]),
+                            alignments=placed)
+        state["gb_placed"] = {_seq_id(cfg.sample): placed}
         main["mean_depth"] = round(float(rc.depth.mean()), 1)
         state["coverage"] = {main["name"]: depth_summary(rc.depth, 30)}
         state["plot_inputs"] = {"kind": "assembly", "depth": rc.depth, "name": main["name"]}
@@ -660,7 +725,9 @@ def _builtin_align(cfg: RunConfig, state: dict) -> None:
     total = mapped_any = 0
     for ref in state["refs"]:
         circ = cfg.workflow == "plasmid_align" or ref.circular
-        rc = map_and_pileup(_read_records(reads), ref.seq, circular=circ)
+        placed: list = []
+        rc = map_and_pileup(_read_records(reads), ref.seq, circular=circ, alignments=placed)
+        state.setdefault("gb_placed", {})[ref.name] = placed
         total = max(total, rc.n_reads)
         mapped_any += rc.n_mapped
         depths[ref.name] = rc.depth
@@ -698,6 +765,8 @@ def _builtin_align(cfg: RunConfig, state: dict) -> None:
                         with_target=[t["name"] for t in targets for _ in t["variants"]])
     state["amplicon"] = {"targets": targets, "mapping": {"total": total, "mapped": mapped_any, "mapped_pct": pct},
                          "min_depth": min_d, "ploidy": ploidy}
+    _set_gb_target(cfg, state, [{"name": r.name, "seq": r.seq, "features": r.features, "variants": plot_vars[r.name],
+                                 "circular": cfg.workflow == "plasmid_align" or r.circular} for r in state["refs"]])
     state["plot_inputs"] = {"kind": "targets", "depth": depths, "refs": state["refs"], "min_depth": min_d,
                             "variants": plot_vars}
     n_high = sum(1 for v in all_vars if v.severity == "high")

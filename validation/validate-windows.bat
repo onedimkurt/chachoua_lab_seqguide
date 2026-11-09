@@ -19,6 +19,7 @@ if not exist "%SEQGUIDE_HOME%\input" mkdir "%SEQGUIDE_HOME%\input"
 if not exist "%SEQGUIDE_HOME%\runs" mkdir "%SEQGUIDE_HOME%\runs"
 xcopy /y /q "%HERE%\input\*" "%SEQGUIDE_HOME%\input\" >nul
 copy /y "%HERE%\samples.tsv" "%SEQGUIDE_HOME%\samples.tsv" >nul
+copy /y "%HERE%\check_exports.sh" "%SEQGUIDE_HOME%\check_exports.sh" >nul
 if exist "%SEQGUIDE_HOME%\runs\validation" rmdir /s /q "%SEQGUIDE_HOME%\runs\validation"
 if exist "%LOG%" del "%LOG%"
 cd /d "%APP%"
@@ -32,6 +33,8 @@ call :log "--- tool check ---"
 call :run docker compose run --rm seqguide python -m seqguide check
 call :log "--- batch ---"
 call :run docker compose run --rm seqguide python -m seqguide batch /data/samples.tsv --out /data/runs/validation
+call :log "--- check genome-browser files with samtools ---"
+call :run docker compose run --rm seqguide bash /data/check_exports.sh
 call :log "--- copy results back ---"
 if exist "%HERE%\results" rmdir /s /q "%HERE%\results"
 xcopy /e /i /y /q "%SEQGUIDE_HOME%\runs\validation" "%HERE%\results" >nul

@@ -170,6 +170,8 @@ SEV_WORD = {"high": "likely harmful", "moderate": "check", "low": "minor", "": "
 
 FILES = [
     ("report.html", "This report."),
+    ("genome_browser", "Folder for IGV and SnapGene: your plasmid as an annotated GenBank file (map features carried over, "
+                       "differences marked), FASTA + .fai, reads as BAM + .bai, and igv_session.xml. See HOW_TO_OPEN.txt."),
     ("assembly_matched_to_reference.fasta", "Your assembled plasmid, oriented and rotated to match your map. Open it in SnapGene/Benchling."),
     ("final_assembly.fasta", "All assembled contigs as produced."),
     ("differences.csv", "The table of differences, for Excel."),
